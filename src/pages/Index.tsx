@@ -42,25 +42,49 @@ function ErrorFallback({ error, resetErrorBoundary }) {
 }
 
 const Index = () => {
-  const { user, profile, loading, signOut, connectionError } = useAuth();
+  const { user, profile, loading, signOut, connectionError, retryConnection } = useAuth();
   const navigate = useNavigate();
   
   // Add this state to manage local loading state
   const [localLoading, setLocalLoading] = useState(true);
   const [localError, setLocalError] = useState(null);
+  const [pageState, setPageState] = useState<string>("initializing");
+
+  // Add detailed debugging after login
+  useEffect(() => {
+    console.log("Index page mounted or updated with state:", {
+      userExists: !!user,
+      profileExists: !!profile,
+      loading,
+      connectionError,
+      pageState
+    });
+    
+    if (user) {
+      console.log("User authenticated:", {
+        userId: user.id,
+        email: user.email,
+        profileRole: profile?.role || "No profile role"
+      });
+    }
+  }, [user, profile, loading, connectionError, pageState]);
 
   useEffect(() => {
     if (!loading) {
       // When auth loading is done, finish our local loading after a brief delay
       // to prevent flickering if profile loads quickly
-      const timer = setTimeout(() => setLocalLoading(false), 100);
+      const timer = setTimeout(() => {
+        setLocalLoading(false);
+        setPageState(user ? "loaded" : "no-user");
+      }, 100);
       return () => clearTimeout(timer);
     }
-  }, [loading]);
+  }, [loading, user]);
 
   useEffect(() => {
     if (!loading && !user) {
       console.log("No user found, redirecting to auth");
+      setPageState("redirecting");
       navigate("/auth");
     }
   }, [user, loading, navigate]);
@@ -84,7 +108,8 @@ const Index = () => {
     );
   }
 
-  if (connectionError) {
+  if (connectionError.isError) {
+    console.log("Rendering connection error state:", connectionError);
     return (
       <div className="min-h-screen bg-gray-50">
         <header className="bg-white shadow">
@@ -95,8 +120,10 @@ const Index = () => {
         <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
           <div className="px-4 py-6 sm:px-0">
             <div className="bg-red-50 p-4 rounded-md border border-red-200">
-              <p className="text-red-700">
-                There was a problem connecting to the server. Please check your internet connection and try again.
+              <p className="text-red-700 mb-4">
+                {connectionError.message || "There was a problem connecting to the server. Please check your internet connection and try again."}
+                <br />
+                <span className="text-sm text-red-500">{connectionError.code ? `Error code: ${connectionError.code}` : ""}</span>
               </p>
               <Button 
                 variant="outline" 
@@ -112,19 +139,38 @@ const Index = () => {
     );
   }
 
-  if (!profile) {
+  if (!profile && user) {
+    console.log("User exists but profile is missing, showing setup screen with user ID:", user.id);
     return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-white shadow">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <Skeleton className="h-8 w-64" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="p-8 bg-white shadow-md rounded-md max-w-md">
+          <h2 className="text-xl font-bold mb-2">Setting up your account</h2>
+          <p className="text-gray-600 mb-4">We're retrieving your profile information...</p>
+          
+          <div className="flex justify-center mb-6">
+            <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
           </div>
-        </header>
-        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0">
-            <LoadingSkeleton />
+          
+          <div className="bg-blue-50 p-4 rounded-md border border-blue-200 text-sm mb-4">
+            <p className="text-blue-700">User ID: {user.id}</p>
+            <p className="text-blue-700">Email: {user.email}</p>
           </div>
-        </main>
+          
+          <div className="text-sm text-gray-500 mt-2 flex justify-center">
+            <Button variant="outline" className="mr-2" onClick={async () => {
+              console.log("Manual retry for profile fetching");
+              await retryConnection();
+            }}>
+              Retry Connection
+            </Button>
+            <Button variant="outline" className="text-red-500" onClick={() => {
+              console.log("User manually signing out due to profile loading issues");
+              signOut();
+            }}>
+              Sign Out
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }

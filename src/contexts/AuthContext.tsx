@@ -270,12 +270,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log("Attempting to sign in with email:", email);
+      
+      // Check Supabase connection before attempting sign in
+      const connectionResult = await checkSupabaseConnection();
+      if (!connectionResult.connected) {
+        console.error("Supabase connection error before sign-in attempt:", connectionResult);
+        toast.error("Connection error. Please check your internet connection and try again.");
+        throw new Error("Connection error before sign-in");
+      }
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase signIn error:", error);
+        throw error;
+      }
+      
+      console.log("Sign in successful!", data.user?.id);
+      // Don't need to set user here as the auth subscription will handle that
     } catch (error) {
       console.error("Error in signIn:", error);
       throw error;

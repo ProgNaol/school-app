@@ -10,12 +10,45 @@ import { Button } from "@/components/ui/button";
 import { ConnectionErrorHandler } from "@/components/ConnectionErrorHandler";
 
 export function StudentDashboard() {
-  const { profile, connectionError } = useAuth();
+  const { profile, connectionError, retryConnection } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [timeoutOccurred, setTimeoutOccurred] = useState(false);
+  const [lastRetryAttempt, setLastRetryAttempt] = useState<Date | null>(null);
+
+  // Log component mounting and important state changes
+  useEffect(() => {
+    console.log("StudentDashboard mounted or updated with state:", {
+      profileExists: !!profile,
+      profileId: profile?.id,
+      profileRole: profile?.role,
+      connectionError: connectionError,
+      currentError: error,
+      timeoutOccurred
+    });
+  }, [profile, connectionError, error, timeoutOccurred]);
+
+  // Handle connection retry with cooldown
+  const handleRetryConnection = async () => {
+    const now = new Date();
+    // Don't allow retries more often than every 3 seconds
+    if (lastRetryAttempt && now.getTime() - lastRetryAttempt.getTime() < 3000) {
+      console.log("Retry attempted too soon, please wait");
+      return;
+    }
+    
+    setLastRetryAttempt(now);
+    console.log("Manually retrying connection from StudentDashboard");
+    try {
+      const result = await retryConnection();
+      console.log("Retry connection result:", result);
+    } catch (err) {
+      console.error("Error during manual connection retry:", err);
+    }
+  };
 
   // Show connection error handler if there's a connection problem
   if (connectionError.isError) {
+    console.log("StudentDashboard: Rendering ConnectionErrorHandler due to connection error");
     return <ConnectionErrorHandler />;
   }
 
@@ -42,13 +75,16 @@ export function StudentDashboard() {
   }, []);
 
   // Optimized query for assignments - single query with joins
-  const { data: assignments, isLoading: isLoadingAssignments, isError: isErrorAssignments } = useQuery({
+  const { data: assignments, isLoading: isLoadingAssignments, isError: isErrorAssignments, error: assignmentsError } = useQuery({
     queryKey: ['student-assignments', profile?.id],
     queryFn: async () => {
-      if (!profile?.id) return [];
+      if (!profile?.id) {
+        console.log("No profile ID available, cannot fetch assignments");
+        return [];
+      }
       
       try {
-        console.debug('Fetching student assignments...');
+        console.log('Fetching student assignments for profile ID:', profile.id);
         // Optimized query that gets assignments in a single query with proper joins
         const { data, error } = await supabase
           .from('student_sections')

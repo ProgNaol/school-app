@@ -10,18 +10,33 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
  * Component to handle Supabase connection errors with retry functionality
  * Provides clear error messages and actions for users to take
  */
-export function ConnectionErrorHandler() {
+type ConnectionErrorHandlerProps = {
+  // Optional custom retry handler
+  onRetry?: () => Promise<void>;
+  // Optional custom error object
+  error?: {
+    isError: boolean;
+    message: string;
+    code?: string;
+    details?: any;
+  }
+};
+
+export function ConnectionErrorHandler({ onRetry, error }: ConnectionErrorHandlerProps = {}) {
   const { connectionError, retryConnection, loading } = useAuth();
   const navigate = useNavigate();
   const [retryCount, setRetryCount] = useState(0);
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
   const [automaticRetryEnabled, setAutomaticRetryEnabled] = useState(true);
+  
+  // Use provided error or fall back to context error
+  const errorToDisplay = error || connectionError;
 
   // Automatic retry logic for temporary network issues
   useEffect(() => {
     let retryTimer: ReturnType<typeof setTimeout>;
 
-    if (connectionError.isError && automaticRetryEnabled && retryCount < 3) {
+    if (errorToDisplay.isError && automaticRetryEnabled && retryCount < 3) {
       retryTimer = setTimeout(() => {
         handleRetry();
       }, 5000 * (retryCount + 1)); // Exponential backoff: 5s, 10s, 15s
