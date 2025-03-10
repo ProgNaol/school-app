@@ -272,25 +272,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log("Attempting to sign in with email:", email);
       
-      // Check Supabase connection before attempting sign in
-      const connectionResult = await checkSupabaseConnection();
-      if (!connectionResult.connected) {
-        console.error("Supabase connection error before sign-in attempt:", connectionResult);
-        toast.error("Connection error. Please check your internet connection and try again.");
-        throw new Error("Connection error before sign-in");
+      // We'll attempt sign-in directly and only show connection errors if sign-in fails with network issues
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        
+        if (error) {
+          console.error("Supabase signIn error:", error);
+          
+          // Check if this is an auth error or a connection issue
+          if (error.message.includes('network') || error.message.includes('Failed to fetch')) {
+            // This is a network related error - now we'll do a more thorough check
+            const connectionResult = await checkSupabaseConnection();
+            if (!connectionResult.connected) {
+              console.error("Confirmed connection issue during sign-in:", connectionResult);
+              setConnectionError({
+                isError: true,
+                message: "Connection issue detected. Please check your internet or try again later.",
+                code: error.message
+              });
+              toast.error("Connection issue. Please check your internet and try again.");
+            } else {
+              // We got a network error but can actually connect - might be a temporary glitch
+              console.log("Network error during sign-in but connection check passed - might be temporary");
+              toast.error("Temporary connection issue. Please try signing in again.");
+            }
+          }
+          
+          throw error;
+        }
+        
+        // If we get here, sign-in was successful
+        console.log("Sign in successful!", data.user?.id);
+      } catch (signInError: any) {
+        // If it's a network error but we haven't checked connection yet, try a direct auth check
+        if (signInError.message && (signInError.message.includes('network') || 
+            signInError.message.includes('Failed to fetch'))) {
+          
+          console.log("Attempting to verify existing session after network error...");
+          const { data: sessionData } = await supabase.auth.getSession();
+          
+          if (sessionData.session) {
+            console.log("Found existing session despite network error");
+            // Don't return the session, just acknowledge it
+          }
+        }
+        
+        // Rethrow if we couldn't recover
+        throw signInError;
       }
       
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (error) {
-        console.error("Supabase signIn error:", error);
-        throw error;
-      }
-      
-      console.log("Sign in successful!", data.user?.id);
       // Don't need to set user here as the auth subscription will handle that
     } catch (error) {
       console.error("Error in signIn:", error);
