@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { useNavigate } from "react-router-dom";
 import { checkSupabaseConnection } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 type Profile = {
   id: string;
@@ -15,11 +16,19 @@ type Profile = {
   avatar_url?: string;
 };
 
+type ConnectionError = {
+  isError: boolean;
+  message: string;
+  code?: string;
+  details?: any;
+}
+
 type AuthContextType = {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  connectionError: boolean;
+  connectionError: ConnectionError;
+  retryConnection: () => Promise<boolean>;
   signUp: (email: string, password: string, userData: any) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -31,16 +40,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [connectionError, setConnectionError] = useState(false);
+  const [connectionError, setConnectionError] = useState<ConnectionError>({
+    isError: false,
+    message: ""
+  });
   const navigate = useNavigate();
+
+  // Check connection to Supabase backend
+  const checkConnection = async () => {
+    try {
+      // Check connection status
+      const connectionStatus = await checkSupabaseConnection();
+      
+      if (!connectionStatus.connected) {
+        console.error("Connection check failed:", connectionStatus.error);
+        setConnectionError({
+          isError: true,
+          message: connectionStatus.error || "Unable to connect to the server",
+          code: connectionStatus.code,
+          details: connectionStatus.details
+        });
+        return false;
+      }
+      
+      // Reset connection error if previously set
+      setConnectionError({
+        isError: false,
+        message: ""
+      });
+      return true;
+    } catch (error) {
+      console.error("Connection check error:", error);
+      setConnectionError({
+        isError: true,
+        message: error instanceof Error ? error.message : "Failed to check connection status",
+        details: error
+      });
+      return false;
+    }
+  };
+
+  // Declare initializeAuth function reference to resolve circular dependency
+  let initializeAuthFn: () => Promise<void>;
+  
+  // Function to retry connection (can be called by UI)
+  const retryConnection = async () => {
+    setLoading(true);
+    const success = await checkConnection();
+    if (success && initializeAuthFn) {
+      await initializeAuthFn();
+      return true;
+    }
+    setLoading(false);
+    return false;
+  };
 
   useEffect(() => {
     let isActive = true; // Prevent state updates after unmount
     let authSubscription: { unsubscribe: () => void } | null = null;
 
+    // Define the initialization function
     const initializeAuth = async () => {
       try {
-        // Get session first with timeout handling
+        // Always check connection first
+        const isConnected = await checkConnection();
+        if (!isConnected) {
+          setLoading(false);
+          return; // Don't continue if connection check fails
+        }
+        
+        // Get session with timeout handling
         const sessionPromise = supabase.auth.getSession();
         
         // Set a timeout for the session fetch
@@ -83,11 +152,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!isActive) return;
         
         console.error("Error initializing auth:", error);
-        setConnectionError(true);
+        setConnectionError({
+          isError: true,
+          message: error instanceof Error ? error.message : "Failed to initialize authentication",
+          details: error
+        });
         setLoading(false);
       }
     };
 
+    // Assign the function to our module-level reference
+    initializeAuthFn = initializeAuth;
+    
+    // Initial auth initialization
     initializeAuth();
 
     // Cleanup function
@@ -115,12 +192,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(timeoutId);
 
       if (error) {
-        setConnectionError(true);
+        console.error("Error fetching profile:", error);
+        setConnectionError({
+          isError: true,
+          message: error.message || "Failed to fetch user profile",
+          code: error.code,
+          details: error
+        });
+        
+        // Show toast notification
+        toast.error("Failed to load profile", {
+          description: "There was a problem connecting to the server. You can try refreshing the page."
+        });
       } else {
         setProfile(data);
       }
     } catch (e) {
-      setConnectionError(true);
+      console.error("Exception fetching profile:", e);
+      setConnectionError({
+        isError: true,
+        message: e instanceof Error ? e.message : "Failed to fetch user profile",
+        details: e
+      });
+      
+      // Show toast notification for exceptions
+      toast.error("Connection error", {
+        description: "There was a problem connecting to the server. Please check your internet connection."
+      });
     } finally {
       setLoading(false);
     }
@@ -198,7 +296,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUp, 
       signIn, 
       signOut, 
-      loading, 
+      loading,
+      retryConnection, 
       connectionError 
     }}>
       {children}

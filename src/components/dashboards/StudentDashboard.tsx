@@ -7,11 +7,17 @@ import { useState, Suspense, useEffect } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConnectionErrorHandler } from "@/components/ConnectionErrorHandler";
 
 export function StudentDashboard() {
-  const { profile } = useAuth();
+  const { profile, connectionError } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [timeoutOccurred, setTimeoutOccurred] = useState(false);
+
+  // Show connection error handler if there's a connection problem
+  if (connectionError.isError) {
+    return <ConnectionErrorHandler />;
+  }
 
   if (!profile || profile.role !== 'student') {
     console.error("StudentDashboard: Not a student user", profile);
@@ -42,6 +48,7 @@ export function StudentDashboard() {
       if (!profile?.id) return [];
       
       try {
+        console.debug('Fetching student assignments...');
         // Optimized query that gets assignments in a single query with proper joins
         const { data, error } = await supabase
           .from('student_sections')
@@ -52,6 +59,7 @@ export function StudentDashboard() {
           .eq('student_id', profile.id);
 
         if (error) {
+          console.error('Error fetching assignments:', error);
           throw error;
         }
 
@@ -81,6 +89,7 @@ export function StudentDashboard() {
       if (!profile?.id) return [];
       
       try {
+        console.debug('Fetching student announcements...');
         // Optimized query that gets announcements in a single query with proper joins
         const { data, error } = await supabase
           .from('student_sections')
@@ -91,6 +100,7 @@ export function StudentDashboard() {
           .eq('student_id', profile.id);
 
         if (error) {
+          console.error('Error fetching announcements:', error);
           throw error;
         }
 
