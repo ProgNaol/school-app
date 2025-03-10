@@ -1,10 +1,11 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { useNavigate } from "react-router-dom";
 import { checkSupabaseConnection } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+// Types defined outside of component functions
 type Profile = {
   id: string;
   user_id: string;
@@ -34,8 +35,10 @@ type AuthContextType = {
   signOut: () => Promise<void>;
 };
 
+// Create the context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Auth provider component defined as a named function declaration
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -305,13 +308,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Custom hook to use the auth context defined as a named function declaration
 export function useAuth() {
   const context = useContext(AuthContext);
+  
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   
-  // Only log in development mode
+  // Only log in development
   if (process.env.NODE_ENV === 'development') {
     console.log("Auth context state:", { 
       userExists: !!context.user,
